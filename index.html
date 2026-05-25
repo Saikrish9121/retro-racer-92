@@ -2,9 +2,19 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>RETRO RACER '92</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+
+  * {
+    box-sizing: border-box;
+    -webkit-tap-highlight-color: transparent;
+  }
 
   html, body {
     margin: 0;
@@ -12,28 +22,58 @@
     background: #000;
     color: #f8f800;
     font-family: 'Press Start 2P', monospace;
-    height: 100%;
+    min-height: 100vh;
+    min-height: 100dvh;
+    overflow: hidden;
+    image-rendering: pixelated;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    overscroll-behavior: none;
+  }
+
+  body {
     display: flex;
     align-items: center;
     justify-content: center;
-    overflow: hidden;
-    image-rendering: pixelated;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
   }
 
   .cabinet {
     background: #1a1a1a;
     border: 6px solid #444;
-    padding: 16px;
+    padding: 12px;
     box-shadow: 0 0 0 4px #000, 0 0 30px #0f0 inset;
+    width: 100%;
+    max-width: 440px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
   }
 
   .hud {
     display: flex;
     justify-content: space-between;
-    font-size: 12px;
+    align-items: center;
+    font-size: 11px;
     color: #f8f800;
-    padding: 6px 4px 10px;
+    padding: 4px;
     text-shadow: 2px 2px 0 #a04000;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .hud > div { white-space: nowrap; }
+
+  .pause-btn {
+    background: #333;
+    border: 2px solid #f8f800;
+    color: #f8f800;
+    font-family: inherit;
+    font-size: 10px;
+    padding: 4px 10px;
+    cursor: pointer;
+    letter-spacing: 2px;
   }
 
   canvas {
@@ -41,73 +81,329 @@
     background: #4a8a30;
     border: 4px solid #f8f800;
     image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    width: 100%;
+    height: auto;
+    aspect-ratio: 320 / 480;
+    max-height: 62vh;
+    margin: 0 auto;
   }
 
-  .controls {
+  .controls-hint {
     text-align: center;
     font-size: 8px;
     color: #6ce06c;
-    padding-top: 10px;
+    padding-top: 6px;
     letter-spacing: 1px;
+    line-height: 1.6;
   }
 
-  .overlay {
-    position: absolute;
-    inset: 0;
+  .touch-pad {
+    display: none;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 4px 4px;
+  }
+
+  .pad-side {
     display: flex;
-    flex-direction: column;
+    gap: 10px;
+  }
+
+  .pad-btn {
+    width: 56px;
+    height: 56px;
+    background: #2a2a2a;
+    border: 3px solid #f8f800;
+    color: #f8f800;
+    font-family: inherit;
+    font-size: 24px;
+    line-height: 1;
+    display: flex;
     align-items: center;
     justify-content: center;
-    background: rgba(0,0,0,0.75);
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: none;
+    box-shadow: inset 0 0 0 2px #000;
+    cursor: pointer;
+  }
+
+  .pad-btn:active,
+  .pad-btn.active {
+    background: #f8f800;
+    color: #1a1a1a;
+  }
+
+  /* ---- Overlay & screens ---- */
+  .overlay {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0,0,0,0.92);
     color: #f8f800;
     text-align: center;
     z-index: 10;
-    pointer-events: none;
+    padding: 20px;
+    overflow-y: auto;
   }
 
-  .overlay h1 {
-    font-size: 24px;
-    margin: 0 0 16px;
+  .screen {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    max-width: 420px;
+    gap: 8px;
+  }
+
+  .screen.active { display: flex; }
+
+  .screen h1 {
+    font-size: clamp(18px, 6vw, 28px);
+    margin: 0 0 12px;
     color: #ff4040;
     text-shadow: 3px 3px 0 #800000;
     letter-spacing: 2px;
   }
 
-  .overlay p {
-    font-size: 10px;
+  .screen h2 {
+    font-size: clamp(14px, 4.5vw, 20px);
+    margin: 0 0 12px;
+    color: #f8f800;
+    text-shadow: 2px 2px 0 #a04000;
+    letter-spacing: 2px;
+  }
+
+  .screen p {
+    font-size: clamp(8px, 2.5vw, 11px);
     margin: 4px 0;
+    color: #fff;
+    line-height: 1.7;
+  }
+
+  .blink { animation: blink 0.8s steps(2, start) infinite; }
+  @keyframes blink { to { visibility: hidden; } }
+
+  .menu-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 16px;
+    width: 100%;
+    max-width: 280px;
+  }
+
+  .menu-btn {
+    background: #1a1a1a;
+    border: 3px solid #f8f800;
+    color: #f8f800;
+    font-family: inherit;
+    font-size: 11px;
+    padding: 12px 16px;
+    cursor: pointer;
+    letter-spacing: 2px;
+    transition: none;
+  }
+
+  .menu-btn:hover,
+  .menu-btn:active {
+    background: #f8f800;
+    color: #1a1a1a;
+  }
+
+  .menu-btn.primary {
+    border-color: #ff4040;
+    color: #ff4040;
+  }
+  .menu-btn.primary:hover,
+  .menu-btn.primary:active {
+    background: #ff4040;
+    color: #1a1a1a;
+  }
+
+  /* ---- Name entry ---- */
+  .name-input {
+    background: #000;
+    border: 3px solid #f8f800;
+    color: #f8f800;
+    font-family: inherit;
+    font-size: 14px;
+    padding: 12px;
+    width: 100%;
+    max-width: 240px;
+    text-align: center;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    outline: none;
+  }
+
+  .name-input:focus {
+    border-color: #6ce06c;
+    box-shadow: 0 0 12px #6ce06c;
+  }
+
+  /* ---- Leaderboard ---- */
+  .board-list {
+    list-style: none;
+    padding: 0;
+    margin: 12px 0;
+    width: 100%;
+    max-width: 360px;
+    border: 2px solid #f8f800;
+    background: #000;
+  }
+
+  .board-list li {
+    display: grid;
+    grid-template-columns: 28px 1fr auto;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    font-size: 10px;
+    border-bottom: 1px solid #333;
     color: #fff;
   }
 
-  .blink {
+  .board-list li:last-child { border-bottom: none; }
+
+  .board-list li .rank { color: #6ce06c; }
+  .board-list li .name { color: #f8f800; text-align: left; letter-spacing: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .board-list li .score { color: #ff4040; }
+
+  .board-list li.me {
+    background: #2a2a00;
+  }
+  .board-list li.gold .rank { color: #ffd700; }
+  .board-list li.gold .name { color: #ffd700; }
+
+  .board-list .empty {
+    grid-template-columns: 1fr;
+    color: #666;
+    text-align: center;
+    padding: 24px;
+  }
+
+  .new-high {
+    color: #ffd700;
+    font-size: clamp(10px, 3vw, 14px);
+    margin: 8px 0;
     animation: blink 0.8s steps(2, start) infinite;
   }
-  @keyframes blink {
-    to { visibility: hidden; }
+
+  /* ---- Responsive ---- */
+  @media (hover: none) and (pointer: coarse) {
+    .touch-pad { display: flex; }
+    .controls-hint { display: none; }
+    canvas { max-height: 55vh; }
+    .cabinet { max-width: 100%; }
+  }
+
+  @media (max-width: 500px) {
+    .cabinet { border-width: 4px; padding: 8px; box-shadow: 0 0 0 2px #000, 0 0 20px #0f0 inset; }
+    .hud { font-size: 9px; }
+    .pad-btn { width: 52px; height: 52px; font-size: 22px; }
+    .board-list li { font-size: 9px; padding: 6px 10px; }
+  }
+
+  @media (orientation: landscape) and (max-height: 500px) {
+    .cabinet { flex-direction: row; max-width: 100%; align-items: center; }
+    canvas { max-height: 88vh; max-width: 60vw; }
+    .hud { flex-direction: column; font-size: 9px; }
+    .touch-pad { flex-direction: column; padding: 6px; }
   }
 </style>
 </head>
 <body>
 
-<div class="cabinet" style="position:relative;">
+<div class="cabinet">
   <div class="hud">
+    <div>PLR <span id="playerHud">---</span></div>
     <div>SCORE <span id="score">000000</span></div>
     <div>HI <span id="hi">000000</span></div>
     <div>SPD <span id="speed">000</span></div>
+    <button class="pause-btn" id="pauseBtn" aria-label="Pause">II</button>
   </div>
 
   <canvas id="game" width="320" height="480"></canvas>
 
-  <div class="controls">
+  <div class="controls-hint">
     &larr; &rarr; STEER &nbsp;|&nbsp; &uarr; ACCEL &nbsp;|&nbsp; &darr; BRAKE &nbsp;|&nbsp; [P] PAUSE
   </div>
 
-  <div id="overlay" class="overlay">
+  <div class="touch-pad" id="touchPad">
+    <div class="pad-side">
+      <button class="pad-btn" data-key="ArrowLeft" aria-label="Steer left">&larr;</button>
+      <button class="pad-btn" data-key="ArrowRight" aria-label="Steer right">&rarr;</button>
+    </div>
+    <div class="pad-side">
+      <button class="pad-btn" data-key="ArrowDown" aria-label="Brake">&darr;</button>
+      <button class="pad-btn" data-key="ArrowUp" aria-label="Accelerate">&uarr;</button>
+    </div>
+  </div>
+</div>
+
+<div id="overlay" class="overlay">
+
+  <!-- Name entry screen -->
+  <div class="screen" id="screen-name">
+    <h1>RETRO RACER '92</h1>
+    <p>ENTER YOUR NAME</p>
+    <input class="name-input" id="nameInput" maxlength="10" autocomplete="off" spellcheck="false" placeholder="PLAYER1">
+    <p style="font-size:8px;color:#888;">3-10 LETTERS / NUMBERS</p>
+    <button class="menu-btn primary" id="nameOk" style="margin-top:12px;">CONTINUE</button>
+  </div>
+
+  <!-- Title screen -->
+  <div class="screen" id="screen-title">
     <h1>RETRO RACER '92</h1>
     <p>DODGE THE TRAFFIC</p>
-    <p>ARROW KEYS TO DRIVE</p>
-    <p class="blink" style="margin-top:18px;color:#6ce06c;">PRESS SPACE TO START</p>
+    <p style="color:#6ce06c;">PLAYER: <span id="titleName">---</span></p>
+    <div class="menu-buttons">
+      <button class="menu-btn primary" id="btnPlay">START</button>
+      <button class="menu-btn" id="btnBoard">LEADERBOARD</button>
+      <button class="menu-btn" id="btnChangeName">CHANGE NAME</button>
+    </div>
+    <p class="blink" style="margin-top:14px;color:#6ce06c;font-size:8px;" id="startHint">PRESS SPACE TO PLAY</p>
   </div>
+
+  <!-- Pause screen -->
+  <div class="screen" id="screen-pause">
+    <h2>PAUSED</h2>
+    <div class="menu-buttons">
+      <button class="menu-btn primary" id="btnResume">RESUME</button>
+      <button class="menu-btn" id="btnQuit">QUIT TO MENU</button>
+    </div>
+  </div>
+
+  <!-- Crash screen -->
+  <div class="screen" id="screen-crash">
+    <h1>CRASHED!</h1>
+    <p>PLAYER: <span id="crashName">---</span></p>
+    <p>SCORE: <span id="crashScore">000000</span></p>
+    <p class="new-high" id="newHighMsg" style="display:none;">NEW HIGH SCORE!</p>
+    <p id="crashRank" style="color:#6ce06c;"></p>
+    <div class="menu-buttons">
+      <button class="menu-btn primary" id="btnPlayAgain">PLAY AGAIN</button>
+      <button class="menu-btn" id="btnBoardFromCrash">LEADERBOARD</button>
+      <button class="menu-btn" id="btnMenuFromCrash">MAIN MENU</button>
+    </div>
+  </div>
+
+  <!-- Leaderboard screen -->
+  <div class="screen" id="screen-board">
+    <h2>TOP 10</h2>
+    <ol class="board-list" id="boardList"></ol>
+    <div class="menu-buttons">
+      <button class="menu-btn primary" id="btnBackFromBoard">BACK</button>
+      <button class="menu-btn" id="btnClearBoard">CLEAR SCORES</button>
+    </div>
+  </div>
+
 </div>
 
 <script>
@@ -119,120 +415,316 @@
   const W = canvas.width;
   const H = canvas.height;
 
-  // Road geometry
   const ROAD_LEFT = 60;
   const ROAD_RIGHT = W - 60;
   const ROAD_W = ROAD_RIGHT - ROAD_LEFT;
   const LANES = 3;
   const LANE_W = ROAD_W / LANES;
 
-  // Game state
-  let state = 'menu'; // menu | playing | paused | dead
+  // ---- Storage keys ----
+  const NAME_KEY = 'retroRacerName';
+  const SCORES_KEY = 'retroRacerScores';
+
+  // ---- Game state ----
+  let state = 'name'; // name | title | playing | paused | dead | board
+  let prevScreen = 'title'; // where to return from leaderboard
   let score = 0;
-  let hi = +localStorage.getItem('retroRacerHi') || 0;
-  let speed = 2;        // current scroll speed
+  let speed = 2;
   let baseSpeed = 2;
   let maxSpeed = 9;
-  let scrollY = 0;
   let stripeOffset = 0;
   let enemies = [];
   let spawnTimer = 0;
   let tick = 0;
+  let playerName = localStorage.getItem(NAME_KEY) || '';
 
-  // Player
-  const player = {
-    w: 28, h: 44,
-    x: W / 2 - 14,
-    y: H - 70,
-    dx: 0
-  };
-
+  const player = { w: 28, h: 44, x: W/2 - 14, y: H - 70, dx: 0 };
   const keys = {};
-  window.addEventListener('keydown', e => {
-    keys[e.key] = true;
-    if (e.key === ' ') {
-      if (state === 'menu' || state === 'dead') startGame();
-    }
-    if (e.key === 'p' || e.key === 'P') {
-      if (state === 'playing') { state = 'paused'; showOverlay('PAUSED','PRESS P TO RESUME'); }
-      else if (state === 'paused') { state = 'playing'; hideOverlay(); }
-    }
-    if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key)) e.preventDefault();
-  });
-  window.addEventListener('keyup', e => { keys[e.key] = false; });
 
+  const isTouch = matchMedia('(hover: none) and (pointer: coarse)').matches;
+
+  // ---- Scores ----
+  function loadScores() {
+    try {
+      const raw = localStorage.getItem(SCORES_KEY);
+      return raw ? JSON.parse(raw) : [];
+    } catch { return []; }
+  }
+
+  function saveScoreEntry(name, scoreVal) {
+    const scores = loadScores();
+    const entry = { name, score: Math.floor(scoreVal), date: Date.now() };
+    scores.push(entry);
+    scores.sort((a, b) => b.score - a.score);
+    const trimmed = scores.slice(0, 50);
+    localStorage.setItem(SCORES_KEY, JSON.stringify(trimmed));
+    const rank = trimmed.findIndex(s => s === entry) + 1;
+    return { rank, top: trimmed };
+  }
+
+  function topHi() {
+    const scores = loadScores();
+    return scores.length ? scores[0].score : 0;
+  }
+
+  // ---- Screen switching ----
+  function showScreen(id) {
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+    document.getElementById(id).classList.add('active');
+    document.getElementById('overlay').style.display = 'flex';
+  }
+  function hideOverlay() {
+    document.getElementById('overlay').style.display = 'none';
+  }
+
+  // ---- Sanitize name ----
+  function cleanName(raw) {
+    return (raw || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10);
+  }
+
+  // ---- Show title ----
+  function showTitle() {
+    state = 'title';
+    document.getElementById('titleName').textContent = playerName || '---';
+    document.getElementById('playerHud').textContent = playerName || '---';
+    document.getElementById('hi').textContent = pad(topHi(), 6);
+    document.getElementById('startHint').textContent = isTouch ? 'TAP START TO PLAY' : 'PRESS SPACE TO PLAY';
+    showScreen('screen-title');
+  }
+
+  // ---- Show name entry ----
+  function showNameEntry() {
+    state = 'name';
+    const input = document.getElementById('nameInput');
+    input.value = playerName || '';
+    showScreen('screen-name');
+    setTimeout(() => input.focus(), 50);
+  }
+
+  // ---- Show leaderboard ----
+  function showBoard(returnTo) {
+    prevScreen = returnTo;
+    state = 'board';
+    renderBoard();
+    showScreen('screen-board');
+  }
+
+  function renderBoard() {
+    const list = document.getElementById('boardList');
+    const scores = loadScores().slice(0, 10);
+    list.innerHTML = '';
+    if (scores.length === 0) {
+      const li = document.createElement('li');
+      li.className = 'empty';
+      li.textContent = 'NO SCORES YET';
+      list.appendChild(li);
+      return;
+    }
+    scores.forEach((s, i) => {
+      const li = document.createElement('li');
+      if (i === 0) li.classList.add('gold');
+      if (s.name === playerName) li.classList.add('me');
+      li.innerHTML = `
+        <span class="rank">${pad(i+1, 2)}</span>
+        <span class="name">${escapeHtml(s.name)}</span>
+        <span class="score">${pad(s.score, 6)}</span>
+      `;
+      list.appendChild(li);
+    });
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({
+      '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+    }[c]));
+  }
+
+  // ---- Show crash ----
+  function showCrash(finalScore) {
+    state = 'dead';
+    const { rank } = saveScoreEntry(playerName, finalScore);
+    document.getElementById('crashName').textContent = playerName;
+    document.getElementById('crashScore').textContent = pad(finalScore, 6);
+    document.getElementById('newHighMsg').style.display = (rank === 1) ? 'block' : 'none';
+    document.getElementById('crashRank').textContent = rank <= 10 ? `RANK #${rank}` : '';
+    document.getElementById('hi').textContent = pad(topHi(), 6);
+    showScreen('screen-crash');
+  }
+
+  // ---- Game lifecycle ----
   function startGame() {
+    if (!playerName) { showNameEntry(); return; }
     state = 'playing';
     score = 0;
     speed = baseSpeed;
     enemies = [];
     spawnTimer = 0;
     player.x = W/2 - player.w/2;
+    document.getElementById('playerHud').textContent = playerName;
     hideOverlay();
   }
 
-  function showOverlay(title, sub) {
-    const ov = document.getElementById('overlay');
-    ov.innerHTML = `<h1>${title}</h1><p>${sub}</p><p class="blink" style="margin-top:18px;color:#6ce06c;">PRESS SPACE</p>`;
-    ov.style.display = 'flex';
-  }
-  function hideOverlay() {
-    document.getElementById('overlay').style.display = 'none';
+  function pauseGame() {
+    if (state !== 'playing') return;
+    state = 'paused';
+    showScreen('screen-pause');
   }
 
-  // Drawing helpers
+  function resumeGame() {
+    if (state !== 'paused') return;
+    state = 'playing';
+    hideOverlay();
+  }
+
+  // ---- Inputs ----
+  window.addEventListener('keydown', e => {
+    // Don't intercept keys when name input is focused
+    if (document.activeElement && document.activeElement.id === 'nameInput') {
+      if (e.key === 'Enter') { e.preventDefault(); submitName(); }
+      return;
+    }
+
+    keys[e.key] = true;
+
+    if (e.key === ' ') {
+      if (state === 'title') startGame();
+      else if (state === 'dead') startGame();
+      else if (state === 'paused') resumeGame();
+    }
+    if (e.key === 'p' || e.key === 'P') {
+      if (state === 'playing') pauseGame();
+      else if (state === 'paused') resumeGame();
+    }
+    if (e.key === 'Escape') {
+      if (state === 'playing') pauseGame();
+    }
+    if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key) && state === 'playing') {
+      e.preventDefault();
+    }
+  });
+  window.addEventListener('keyup', e => { keys[e.key] = false; });
+
+  function bindPad(btn) {
+    const key = btn.dataset.key;
+    const press = e => {
+      if (e.cancelable) e.preventDefault();
+      keys[key] = true;
+      btn.classList.add('active');
+    };
+    const release = e => {
+      if (e.cancelable) e.preventDefault();
+      keys[key] = false;
+      btn.classList.remove('active');
+    };
+    btn.addEventListener('touchstart', press, { passive: false });
+    btn.addEventListener('touchend', release, { passive: false });
+    btn.addEventListener('touchcancel', release, { passive: false });
+    btn.addEventListener('mousedown', press);
+    btn.addEventListener('mouseup', release);
+    btn.addEventListener('mouseleave', release);
+    btn.addEventListener('contextmenu', e => e.preventDefault());
+  }
+  document.querySelectorAll('.pad-btn').forEach(bindPad);
+
+  // ---- Menu buttons ----
+  function tapHandler(el, fn) {
+    el.addEventListener('click', e => { e.preventDefault(); fn(); el.blur(); });
+    el.addEventListener('touchstart', e => { e.preventDefault(); fn(); }, { passive: false });
+  }
+
+  tapHandler(document.getElementById('pauseBtn'), () => {
+    if (state === 'playing') pauseGame();
+    else if (state === 'paused') resumeGame();
+  });
+
+  tapHandler(document.getElementById('btnPlay'), startGame);
+  tapHandler(document.getElementById('btnBoard'), () => showBoard('screen-title'));
+  tapHandler(document.getElementById('btnChangeName'), showNameEntry);
+
+  tapHandler(document.getElementById('btnResume'), resumeGame);
+  tapHandler(document.getElementById('btnQuit'), () => { state = 'title'; showTitle(); });
+
+  tapHandler(document.getElementById('btnPlayAgain'), startGame);
+  tapHandler(document.getElementById('btnBoardFromCrash'), () => showBoard('screen-crash'));
+  tapHandler(document.getElementById('btnMenuFromCrash'), showTitle);
+
+  tapHandler(document.getElementById('btnBackFromBoard'), () => {
+    if (prevScreen === 'screen-crash') showScreen('screen-crash');
+    else showTitle();
+  });
+
+  tapHandler(document.getElementById('btnClearBoard'), () => {
+    if (confirm('Clear all scores?')) {
+      localStorage.removeItem(SCORES_KEY);
+      renderBoard();
+      document.getElementById('hi').textContent = pad(0, 6);
+    }
+  });
+
+  // Name entry
+  function submitName() {
+    const input = document.getElementById('nameInput');
+    const cleaned = cleanName(input.value);
+    if (cleaned.length < 3) {
+      input.value = '';
+      input.placeholder = 'MIN 3 CHARS';
+      input.focus();
+      return;
+    }
+    playerName = cleaned;
+    localStorage.setItem(NAME_KEY, playerName);
+    showTitle();
+  }
+  tapHandler(document.getElementById('nameOk'), submitName);
+  document.getElementById('nameInput').addEventListener('input', e => {
+    e.target.value = cleanName(e.target.value);
+  });
+
+  // Pause when tab hidden
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden && state === 'playing') pauseGame();
+  });
+
+  // ---- Drawing ----
   function drawCar(x, y, color, accent) {
-    // body
     ctx.fillStyle = color;
     ctx.fillRect(x, y, 28, 44);
-    // roof / cabin
     ctx.fillStyle = '#202020';
     ctx.fillRect(x+4, y+10, 20, 16);
-    // windshield highlight
     ctx.fillStyle = '#80d0ff';
     ctx.fillRect(x+6, y+12, 16, 4);
-    // hood detail
     ctx.fillStyle = accent;
     ctx.fillRect(x+2, y+2, 24, 4);
     ctx.fillRect(x+2, y+38, 24, 4);
-    // wheels
     ctx.fillStyle = '#000';
     ctx.fillRect(x-2, y+6, 4, 10);
     ctx.fillRect(x+26, y+6, 4, 10);
     ctx.fillRect(x-2, y+28, 4, 10);
     ctx.fillRect(x+26, y+28, 4, 10);
-    // headlights
     ctx.fillStyle = '#ffff80';
     ctx.fillRect(x+3, y+40, 4, 3);
     ctx.fillRect(x+21, y+40, 4, 3);
   }
 
-  function drawEnemy(e) {
-    drawCar(e.x, e.y, e.color, e.accent);
-  }
+  function drawEnemy(e) { drawCar(e.x, e.y, e.color, e.accent); }
 
   function drawRoad() {
-    // grass sides
     ctx.fillStyle = '#4a8a30';
     ctx.fillRect(0, 0, W, H);
 
-    // shoulders (darker grass strips)
     ctx.fillStyle = '#306020';
     for (let y = -16 + (stripeOffset % 16); y < H; y += 16) {
       ctx.fillRect(0, y, 12, 8);
       ctx.fillRect(W-12, y, 12, 8);
     }
 
-    // road
     ctx.fillStyle = '#404040';
     ctx.fillRect(ROAD_LEFT, 0, ROAD_W, H);
 
-    // edge lines
     ctx.fillStyle = '#f8f800';
     ctx.fillRect(ROAD_LEFT-2, 0, 2, H);
     ctx.fillRect(ROAD_RIGHT, 0, 2, H);
 
-    // lane dashes
     ctx.fillStyle = '#fff';
     const dashH = 24, gap = 20;
     for (let lane = 1; lane < LANES; lane++) {
@@ -258,16 +750,10 @@
   function spawnEnemy() {
     const lane = Math.floor(Math.random() * LANES);
     const [color, accent] = ENEMY_COLORS[Math.floor(Math.random() * ENEMY_COLORS.length)];
-    // avoid overlap in same lane
     for (const e of enemies) {
       if (Math.abs(e.x - laneX(lane)) < 4 && e.y < 90) return;
     }
-    enemies.push({
-      x: laneX(lane),
-      y: -50,
-      color, accent,
-      vy: 0
-    });
+    enemies.push({ x: laneX(lane), y: -50, color, accent });
   }
 
   function rectsOverlap(a, b) {
@@ -278,8 +764,7 @@
   function update() {
     tick++;
 
-    // Input -> speed & steering
-    if (keys['ArrowUp'])   speed = Math.min(maxSpeed, speed + 0.05);
+    if (keys['ArrowUp']) speed = Math.min(maxSpeed, speed + 0.05);
     else if (keys['ArrowDown']) speed = Math.max(1, speed - 0.12);
     else speed = Math.max(baseSpeed, speed - 0.01);
 
@@ -289,40 +774,28 @@
     if (player.x < ROAD_LEFT + 2) player.x = ROAD_LEFT + 2;
     if (player.x + player.w > ROAD_RIGHT - 2) player.x = ROAD_RIGHT - 2 - player.w;
 
-    // Scroll
     stripeOffset += speed;
 
-    // Difficulty ramp
     baseSpeed = Math.min(5, 2 + score / 5000);
     maxSpeed = Math.min(12, 9 + score / 4000);
 
-    // Spawning
     spawnTimer -= speed;
     if (spawnTimer <= 0) {
       spawnEnemy();
       spawnTimer = 70 + Math.random() * 50 - Math.min(40, score/300);
     }
 
-    // Move enemies
-    for (const e of enemies) {
-      e.y += speed + 1;
-    }
+    for (const e of enemies) e.y += speed + 1;
     enemies = enemies.filter(e => e.y < H + 60);
 
-    // Collide
     for (const e of enemies) {
       if (rectsOverlap(player, e)) {
-        state = 'dead';
-        if (score > hi) {
-          hi = Math.floor(score);
-          localStorage.setItem('retroRacerHi', hi);
-        }
-        showOverlay('CRASHED!', 'SCORE ' + pad(Math.floor(score),6));
+        const finalScore = Math.floor(score);
+        showCrash(finalScore);
         return;
       }
     }
 
-    // Score
     score += speed * 0.6;
   }
 
@@ -334,20 +807,12 @@
 
   function draw() {
     drawRoad();
-
-    // shadow under player
     ctx.fillStyle = 'rgba(0,0,0,0.4)';
     ctx.fillRect(player.x+2, player.y+44, 24, 4);
-
-    // enemies
     for (const e of enemies) drawEnemy(e);
-
-    // player car (classic red)
     drawCar(player.x, player.y, '#f02020', '#800000');
 
-    // HUD update
     document.getElementById('score').textContent = pad(score, 6);
-    document.getElementById('hi').textContent = pad(hi, 6);
     document.getElementById('speed').textContent = pad(speed * 30, 3);
   }
 
@@ -357,7 +822,14 @@
     requestAnimationFrame(loop);
   }
 
-  // initial render
+  // ---- Boot ----
+  document.getElementById('hi').textContent = pad(topHi(), 6);
+  if (playerName) {
+    document.getElementById('playerHud').textContent = playerName;
+    showTitle();
+  } else {
+    showNameEntry();
+  }
   draw();
   loop();
 })();
