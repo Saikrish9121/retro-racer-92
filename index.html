@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>RETRO RACER '92</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: #000;
+    color: #f8f800;
+    font-family: 'Press Start 2P', monospace;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    image-rendering: pixelated;
+  }
+
+  .cabinet {
+    background: #1a1a1a;
+    border: 6px solid #444;
+    padding: 16px;
+    box-shadow: 0 0 0 4px #000, 0 0 30px #0f0 inset;
+  }
+
+  .hud {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    color: #f8f800;
+    padding: 6px 4px 10px;
+    text-shadow: 2px 2px 0 #a04000;
+  }
+
+  canvas {
+    display: block;
+    background: #4a8a30;
+    border: 4px solid #f8f800;
+    image-rendering: pixelated;
+  }
+
+  .controls {
+    text-align: center;
+    font-size: 8px;
+    color: #6ce06c;
+    padding-top: 10px;
+    letter-spacing: 1px;
+  }
+
+  .overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0,0,0,0.75);
+    color: #f8f800;
+    text-align: center;
+    z-index: 10;
+    pointer-events: none;
+  }
+
+  .overlay h1 {
+    font-size: 24px;
+    margin: 0 0 16px;
+    color: #ff4040;
+    text-shadow: 3px 3px 0 #800000;
+    letter-spacing: 2px;
+  }
+
+  .overlay p {
+    font-size: 10px;
+    margin: 4px 0;
+    color: #fff;
+  }
+
+  .blink {
+    animation: blink 0.8s steps(2, start) infinite;
+  }
+  @keyframes blink {
+    to { visibility: hidden; }
+  }
+</style>
+</head>
+<body>
+
+<div class="cabinet" style="position:relative;">
+  <div class="hud">
+    <div>SCORE <span id="score">000000</span></div>
+    <div>HI <span id="hi">000000</span></div>
+    <div>SPD <span id="speed">000</span></div>
+  </div>
+
+  <canvas id="game" width="320" height="480"></canvas>
+
+  <div class="controls">
+    &larr; &rarr; STEER &nbsp;|&nbsp; &uarr; ACCEL &nbsp;|&nbsp; &darr; BRAKE &nbsp;|&nbsp; [P] PAUSE
+  </div>
+
+  <div id="overlay" class="overlay">
+    <h1>RETRO RACER '92</h1>
+    <p>DODGE THE TRAFFIC</p>
+    <p>ARROW KEYS TO DRIVE</p>
+    <p class="blink" style="margin-top:18px;color:#6ce06c;">PRESS SPACE TO START</p>
+  </div>
+</div>
+
+<script>
+(() => {
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+
+  const W = canvas.width;
+  const H = canvas.height;
+
+  // Road geometry
+  const ROAD_LEFT = 60;
+  const ROAD_RIGHT = W - 60;
+  const ROAD_W = ROAD_RIGHT - ROAD_LEFT;
+  const LANES = 3;
+  const LANE_W = ROAD_W / LANES;
+
+  // Game state
+  let state = 'menu'; // menu | playing | paused | dead
+  let score = 0;
+  let hi = +localStorage.getItem('retroRacerHi') || 0;
+  let speed = 2;        // current scroll speed
+  let baseSpeed = 2;
+  let maxSpeed = 9;
+  let scrollY = 0;
+  let stripeOffset = 0;
+  let enemies = [];
+  let spawnTimer = 0;
+  let tick = 0;
+
+  // Player
+  const player = {
+    w: 28, h: 44,
+    x: W / 2 - 14,
+    y: H - 70,
+    dx: 0
+  };
+
+  const keys = {};
+  window.addEventListener('keydown', e => {
+    keys[e.key] = true;
+    if (e.key === ' ') {
+      if (state === 'menu' || state === 'dead') startGame();
+    }
+    if (e.key === 'p' || e.key === 'P') {
+      if (state === 'playing') { state = 'paused'; showOverlay('PAUSED','PRESS P TO RESUME'); }
+      else if (state === 'paused') { state = 'playing'; hideOverlay(); }
+    }
+    if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key)) e.preventDefault();
+  });
+  window.addEventListener('keyup', e => { keys[e.key] = false; });
+
+  function startGame() {
+    state = 'playing';
+    score = 0;
+    speed = baseSpeed;
+    enemies = [];
+    spawnTimer = 0;
+    player.x = W/2 - player.w/2;
+    hideOverlay();
+  }
+
+  function showOverlay(title, sub) {
+    const ov = document.getElementById('overlay');
+    ov.innerHTML = `<h1>${title}</h1><p>${sub}</p><p class="blink" style="margin-top:18px;color:#6ce06c;">PRESS SPACE</p>`;
+    ov.style.display = 'flex';
+  }
+  function hideOverlay() {
+    document.getElementById('overlay').style.display = 'none';
+  }
+
+  // Drawing helpers
+  function drawCar(x, y, color, accent) {
+    // body
+    ctx.fillStyle = color;
+    ctx.fillRect(x, y, 28, 44);
+    // roof / cabin
+    ctx.fillStyle = '#202020';
+    ctx.fillRect(x+4, y+10, 20, 16);
+    // windshield highlight
+    ctx.fillStyle = '#80d0ff';
+    ctx.fillRect(x+6, y+12, 16, 4);
+    // hood detail
+    ctx.fillStyle = accent;
+    ctx.fillRect(x+2, y+2, 24, 4);
+    ctx.fillRect(x+2, y+38, 24, 4);
+    // wheels
+    ctx.fillStyle = '#000';
+    ctx.fillRect(x-2, y+6, 4, 10);
+    ctx.fillRect(x+26, y+6, 4, 10);
+    ctx.fillRect(x-2, y+28, 4, 10);
+    ctx.fillRect(x+26, y+28, 4, 10);
+    // headlights
+    ctx.fillStyle = '#ffff80';
+    ctx.fillRect(x+3, y+40, 4, 3);
+    ctx.fillRect(x+21, y+40, 4, 3);
+  }
+
+  function drawEnemy(e) {
+    drawCar(e.x, e.y, e.color, e.accent);
+  }
+
+  function drawRoad() {
+    // grass sides
+    ctx.fillStyle = '#4a8a30';
+    ctx.fillRect(0, 0, W, H);
+
+    // shoulders (darker grass strips)
+    ctx.fillStyle = '#306020';
+    for (let y = -16 + (stripeOffset % 16); y < H; y += 16) {
+      ctx.fillRect(0, y, 12, 8);
+      ctx.fillRect(W-12, y, 12, 8);
+    }
+
+    // road
+    ctx.fillStyle = '#404040';
+    ctx.fillRect(ROAD_LEFT, 0, ROAD_W, H);
+
+    // edge lines
+    ctx.fillStyle = '#f8f800';
+    ctx.fillRect(ROAD_LEFT-2, 0, 2, H);
+    ctx.fillRect(ROAD_RIGHT, 0, 2, H);
+
+    // lane dashes
+    ctx.fillStyle = '#fff';
+    const dashH = 24, gap = 20;
+    for (let lane = 1; lane < LANES; lane++) {
+      const lx = ROAD_LEFT + lane * LANE_W - 2;
+      for (let y = -dashH + (stripeOffset % (dashH+gap)); y < H; y += dashH + gap) {
+        ctx.fillRect(lx, y, 4, dashH);
+      }
+    }
+  }
+
+  function laneX(lane) {
+    return ROAD_LEFT + lane * LANE_W + (LANE_W - 28) / 2;
+  }
+
+  const ENEMY_COLORS = [
+    ['#e04040', '#a02020'],
+    ['#4080e0', '#204080'],
+    ['#e0a040', '#a06020'],
+    ['#a040e0', '#602080'],
+    ['#40c060', '#208040'],
+  ];
+
+  function spawnEnemy() {
+    const lane = Math.floor(Math.random() * LANES);
+    const [color, accent] = ENEMY_COLORS[Math.floor(Math.random() * ENEMY_COLORS.length)];
+    // avoid overlap in same lane
+    for (const e of enemies) {
+      if (Math.abs(e.x - laneX(lane)) < 4 && e.y < 90) return;
+    }
+    enemies.push({
+      x: laneX(lane),
+      y: -50,
+      color, accent,
+      vy: 0
+    });
+  }
+
+  function rectsOverlap(a, b) {
+    return a.x < b.x + 28 && a.x + 28 > b.x &&
+           a.y < b.y + 44 && a.y + 44 > b.y;
+  }
+
+  function update() {
+    tick++;
+
+    // Input -> speed & steering
+    if (keys['ArrowUp'])   speed = Math.min(maxSpeed, speed + 0.05);
+    else if (keys['ArrowDown']) speed = Math.max(1, speed - 0.12);
+    else speed = Math.max(baseSpeed, speed - 0.01);
+
+    const steer = 3.2;
+    if (keys['ArrowLeft'])  player.x -= steer;
+    if (keys['ArrowRight']) player.x += steer;
+    if (player.x < ROAD_LEFT + 2) player.x = ROAD_LEFT + 2;
+    if (player.x + player.w > ROAD_RIGHT - 2) player.x = ROAD_RIGHT - 2 - player.w;
+
+    // Scroll
+    stripeOffset += speed;
+
+    // Difficulty ramp
+    baseSpeed = Math.min(5, 2 + score / 5000);
+    maxSpeed = Math.min(12, 9 + score / 4000);
+
+    // Spawning
+    spawnTimer -= speed;
+    if (spawnTimer <= 0) {
+      spawnEnemy();
+      spawnTimer = 70 + Math.random() * 50 - Math.min(40, score/300);
+    }
+
+    // Move enemies
+    for (const e of enemies) {
+      e.y += speed + 1;
+    }
+    enemies = enemies.filter(e => e.y < H + 60);
+
+    // Collide
+    for (const e of enemies) {
+      if (rectsOverlap(player, e)) {
+        state = 'dead';
+        if (score > hi) {
+          hi = Math.floor(score);
+          localStorage.setItem('retroRacerHi', hi);
+        }
+        showOverlay('CRASHED!', 'SCORE ' + pad(Math.floor(score),6));
+        return;
+      }
+    }
+
+    // Score
+    score += speed * 0.6;
+  }
+
+  function pad(n, len) {
+    let s = '' + Math.floor(n);
+    while (s.length < len) s = '0' + s;
+    return s;
+  }
+
+  function draw() {
+    drawRoad();
+
+    // shadow under player
+    ctx.fillStyle = 'rgba(0,0,0,0.4)';
+    ctx.fillRect(player.x+2, player.y+44, 24, 4);
+
+    // enemies
+    for (const e of enemies) drawEnemy(e);
+
+    // player car (classic red)
+    drawCar(player.x, player.y, '#f02020', '#800000');
+
+    // HUD update
+    document.getElementById('score').textContent = pad(score, 6);
+    document.getElementById('hi').textContent = pad(hi, 6);
+    document.getElementById('speed').textContent = pad(speed * 30, 3);
+  }
+
+  function loop() {
+    if (state === 'playing') update();
+    draw();
+    requestAnimationFrame(loop);
+  }
+
+  // initial render
+  draw();
+  loop();
+})();
+</script>
+
+</body>
+</html>
